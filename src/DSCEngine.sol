@@ -17,5 +17,17 @@ pragma solidity ^0.8.20;
  * @notice This contract is very loosely based on the MakerDAO DSS system
  */
 contract DSCEngine {
-    constructor() {}
+    function deposicCollateralAndMintSc() external {}
+
+    function deposicCollateral() external {}
+
+    function redeemCollateralForDsc() external {}
+
+    function mintDsc() external {}
+
+    function burnDsc() external {}
+
+    function liquidate() external {}
+
+    function getHealthFactor() external {}
 }
