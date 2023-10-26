@@ -38,6 +38,9 @@ contract DSCEngine is ReentrancyGuard {
     mapping(address token => address priceFeed) private s_priceFeeds;
     /// @dev Mapping of users to collateral balances by token
     mapping(address user => mapping(address token => uint256 balance)) s_collateralDeposited;
+    /// @dev Mapping of amount DSC minted by user
+    mapping(address user => uint256 amount) private s_DSCMinted;
+    address[] private s_collateralTokens;
 
     //////////////////
     // Events       //
@@ -73,6 +76,7 @@ contract DSCEngine is ReentrancyGuard {
         uint256 addressesLength = tokenAddresses.length;
         for (uint256 i = 0; i < addressesLength; i++) {
             s_priceFeeds[tokenAddresses[i]] = priceFeedAddresses[i];
+            s_collateralTokens.push(tokenAddresses[i]);
         }
 
         i_dsc = DecentralizedStableCoin(dscAddress);
@@ -85,7 +89,6 @@ contract DSCEngine is ReentrancyGuard {
     function depositCollateralAndMintSc() external {}
 
     /**
-     *
      * @param tokenCollateralAddress The address of the collateral token to deposit
      * @param amountCollateral The amount of collateral to deposit
      */
@@ -104,12 +107,68 @@ contract DSCEngine is ReentrancyGuard {
     }
 
     function redeemCollateralForDsc() external {}
+    /**
+     * @notice follows CEI
+     * @param amountDscToMint The amount of DSC to mint
+     * @notice They must have more collateral value than the minimun threshold
+     */
 
-    function mintDsc() external {}
+    function mintDsc(uint256 amountDscToMint) external moreThanZero(amountDscToMint) nonReentrant {
+        s_DSCMinted[msg.sender] += amountDscToMint;
+        // _revertIfHealthFactorIsBroken(msg.sender);
+    }
 
     function burnDsc() external {}
 
     function liquidate() external {}
 
     function getHealthFactor() external {}
+
+    /////////////////////////////////////////
+    // Private & Internal View Functions   //
+    /////////////////////////////////////////
+    function _getAccountInformation(address user)
+        private
+        view
+        returns (uint256 totalDscMinted, uint256 collateralValueInUsed)
+    {
+        totalDscMinted = s_DSCMinted[user];
+        // collateralValueInUsd = getAccountCollateralValue(user);
+    }
+
+    /**
+     * @param user The address of the user to get the health factor for
+     * @return How close the user is to being liquidated. If a user health factor goes below 1, then they can get liquidated
+     */
+    function _healthFactor(address user) private view returns (uint256) {
+        (uint256 totalDscMinted, uint256 collateralValueInUsed) = _getAccountInformation(user);
+    }
+
+    function _revertIfHealthFactorIsBroken(address user) internal view {
+        // 1- Check if the health factor, do they have enough collateral?
+        // 2- Revert if they don't
+    }
+
+    ////////////////////////////////////////
+    // Public & External View Functions   //
+    ////////////////////////////////////////
+
+    function getAccountCollateralValue(address user) public view returns (uint256) {
+        // 1- Loop through collateral deposited by the user and map it to the price to get the USD value
+        uint256 totalCollateralValueInUsd;
+        for (uint256 i = 0; i < s_collateralTokens.length; i++) {
+            address token = s_collateralTokens[i];
+            uint256 amount = s_collateralDeposited[user][token];
+            // 2- Add it to the total
+            // totalCollateralValueInUsd += getUsdValue(token, amount);
+        }
+    }
+
+    function getUsdValue(address token, uint256 amount) public view returns (uint256) {
+        // 1- Get the price feed address
+        address priceFeedAddress = s_priceFeeds[token];
+        // 2- Get the price from the price feed
+        // 3- Multiply the price by the amount
+        // 4- Return the value
+    }
 }
