@@ -66,7 +66,7 @@ contract DSCEngineTest is Test {
     // depositCollateral Tests  //
     //////////////////////////////
 
-    function testRevertsIfCollateralZero() public {
+    function testRevertsdepositCollateralIfCollateralZero() public {
         vm.startPrank(user);
         ERC20Mock(weth).approve(address(dsce), amountCollateral);
 
