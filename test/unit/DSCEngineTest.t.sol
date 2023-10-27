@@ -6,21 +6,47 @@ import {DSCEngine} from "src/DSCEngine.sol";
 import {DecentralizedStableCoin} from "src/DecentralizedStableCoin.sol";
 import {DeployDSC} from "script/DeployDSC.s.sol";
 import {HelperConfig} from "script/HelperConfig.s.sol";
+import {ERC20Mock} from "@openzeppelin/contracts/mocks/ERC20Mock.sol";
 
 contract DSCEngineTest is Test {
-    DeployDSC deployer;
-    DSCEngine engine;
-    DecentralizedStableCoin dsc;
-    HelperConfig config;
+    //////////////////
+    // Errors       //
+    //////////////////
+    error DSCEngine__NeedsMoreThanZero();
+
+    DSCEngine public dsce;
+    DecentralizedStableCoin public dsc;
+    HelperConfig public config;
+
     address public weth;
     address public wbtc;
 
+    uint256 amountCollateral = 10 ether;
+    address public user = address(1);
+    address public owner;
+
+    ERC20Mock public wethToken;
+    uint256 public constant STARTING_USER_BALANCE = 10 ether;
+
     function setUp() public {
-        deployer = new DeployDSC();
-        (dsc, engine, config) = deployer.run();
+        DeployDSC deployer = new DeployDSC();
+        (dsc, dsce, config) = deployer.run();
         config = config;
-        (,, weth, wbtc,) = config.activeNetworkConfig();
+        (,, address wethAddr, address wbtcAddr, uint256 deployerKey) = config.activeNetworkConfig();
+        weth = wethAddr;
+        wbtc = wbtcAddr;
+        owner = vm.addr(deployerKey);
+
+        wethToken = ERC20Mock(weth);
+
+        ERC20Mock(weth).mint(user, STARTING_USER_BALANCE);
+        ERC20Mock(wbtc).mint(user, STARTING_USER_BALANCE);
     }
+
+    //////////////////
+    // Events       //
+    //////////////////
+    event CollateralDeposited(address indexed user, address indexed token, uint256 amount);
 
     //////////////////
     // Price Tests  //
@@ -31,8 +57,55 @@ contract DSCEngineTest is Test {
         // 15e18 * 2000/ETH = 30,000e18
         uint256 expectedUsd = 30000e18;
 
-        uint256 actual = engine.getUsdValue(weth, ethAmount);
+        uint256 actual = dsce.getUsdValue(weth, ethAmount);
 
         assertEq(actual, expectedUsd);
+    }
+
+    //////////////////////////////
+    // depositCollateral Tests  //
+    //////////////////////////////
+
+    function testRevertsIfCollateralZero() public {
+        vm.startPrank(user);
+        ERC20Mock(weth).approve(address(dsce), amountCollateral);
+
+        vm.expectRevert(DSCEngine.DSCEngine__NeedsMoreThanZero.selector);
+        dsce.depositCollateral(weth, 0);
+        vm.stopPrank();
+    }
+
+    function testRevertDepositCollateralTransferFailEmits() public {
+        uint256 amount = 1e18;
+        vm.expectRevert("ERC20: insufficient allowance");
+        dsce.depositCollateral(weth, amount);
+    }
+
+    function testDepositCollateralUpdatesStorage() public {
+        // Arrange
+        vm.startPrank(user);
+        wethToken.approve(address(dsce), amountCollateral);
+
+        // Act
+        dsce.depositCollateral(weth, amountCollateral);
+        vm.stopPrank();
+
+        // Assert
+        uint256 expected = dsce.getUsdValue(weth, amountCollateral);
+        uint256 actualCollateral = dsce.getAccountCollateralValue(user);
+
+        assertEq(actualCollateral, expected);
+    }
+
+    function testDepositCollateralUpdatesEmits() public {
+        // Arrange
+        vm.startPrank(user);
+        wethToken.approve(address(dsce), amountCollateral);
+
+        // Act
+        vm.expectEmit(true, true, false, true, address(dsce));
+        emit CollateralDeposited(user, weth, amountCollateral);
+        dsce.depositCollateral(weth, amountCollateral);
+        vm.stopPrank();
     }
 }
