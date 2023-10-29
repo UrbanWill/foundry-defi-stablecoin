@@ -95,15 +95,28 @@ contract DSCEngine is ReentrancyGuard {
     ///////////////////////////
     // External Functions    //
     ///////////////////////////
-
-    function depositCollateralAndMintSc() external {}
+    /**
+     *
+     * @param tokenCollateralAddress The ERC20 token address of the collateral to deposit
+     * @param amountCollateral The amount of colloateral to deposit
+     * @param amountDscToMint The amount of DSC to mint
+     * @notice This function will deposit collateral and mint DSC in one transaction
+     */
+    function depositCollateralAndMintDsc(
+        address tokenCollateralAddress,
+        uint256 amountCollateral,
+        uint256 amountDscToMint
+    ) external {
+        depositCollateral(tokenCollateralAddress, amountCollateral);
+        mintDsc(amountDscToMint);
+    }
 
     /**
      * @param tokenCollateralAddress The address of the collateral token to deposit
      * @param amountCollateral The amount of collateral to deposit
      */
     function depositCollateral(address tokenCollateralAddress, uint256 amountCollateral)
-        external
+        public
         moreThanZero(amountCollateral)
         isAllowendToken(tokenCollateralAddress)
         nonReentrant
@@ -123,7 +136,7 @@ contract DSCEngine is ReentrancyGuard {
      * @notice They must have more collateral value than the minimun threshold
      */
 
-    function mintDsc(uint256 amountDscToMint) external moreThanZero(amountDscToMint) nonReentrant {
+    function mintDsc(uint256 amountDscToMint) public moreThanZero(amountDscToMint) nonReentrant {
         s_DSCMinted[msg.sender] += amountDscToMint;
         _revertIfHealthFactorIsBroken(msg.sender);
 
