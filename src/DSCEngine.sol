@@ -56,10 +56,11 @@ contract DSCEngine is ReentrancyGuard {
     // Events       //
     //////////////////
     event CollateralDeposited(address indexed user, address indexed token, uint256 amount);
-
+    event CollateralRedeemed(address indexed user, address indexed token, uint256 amount);
     //////////////////
     // Modifiers    //
     //////////////////
+
     modifier moreThanZero(uint256 amount) {
         if (amount <= 0) {
             revert DSCEngine__NeedsMoreThanZero();
@@ -98,7 +99,8 @@ contract DSCEngine is ReentrancyGuard {
     /**
      *
      * @param tokenCollateralAddress The ERC20 token address of the collateral to deposit
-     * @param amountCollateral The amount of colloateral to deposit
+     * @param amountCollateral The amount moreThanZero(amountCollateral) nonReentrant
+     * s_collateralDepositedof colloateral to deposit
      * @param amountDscToMint The amount of DSC to mint
      * @notice This function will deposit collateral and mint DSC in one transaction
      */
@@ -124,18 +126,45 @@ contract DSCEngine is ReentrancyGuard {
         s_collateralDeposited[msg.sender][tokenCollateralAddress] += amountCollateral;
         emit CollateralDeposited(msg.sender, tokenCollateralAddress, amountCollateral);
         bool success = ERC20(tokenCollateralAddress).transferFrom(msg.sender, address(this), amountCollateral);
+        // this conditional his hypothetical
         if (!success) {
             revert DSCEngine__TransferFailed();
         }
     }
 
-    function redeemCollateralForDsc() external {}
+    /**
+     * @param tokenCollateralAddress The address of the collateral token to redeem
+     * @param amountCollateral The amount of collateral to redeem
+     * @param amountDscToBurn The amount of DSC to burn
+     * @notice This function will redeem collateral and burn DSC in one transaction
+     */
+    function redeemCollateralForDsc(address tokenCollateralAddress, uint256 amountCollateral, uint256 amountDscToBurn)
+        external
+    {
+        burnDsc(amountDscToBurn);
+        redeemCollateral(tokenCollateralAddress, amountCollateral);
+        // redeem collateral already checks for health factor
+    }
+
+    function redeemCollateral(address tokenCollateralAddress, uint256 amountCollateral)
+        public
+        moreThanZero(amountCollateral)
+        nonReentrant
+    {
+        s_collateralDeposited[msg.sender][tokenCollateralAddress] -= amountCollateral;
+        emit CollateralRedeemed(msg.sender, tokenCollateralAddress, amountCollateral);
+        bool success = ERC20(tokenCollateralAddress).transfer(msg.sender, amountCollateral);
+        if (!success) {
+            revert DSCEngine__TransferFailed();
+        }
+        _revertIfHealthFactorIsBroken(msg.sender);
+    }
+
     /**
      * @notice follows CEI
      * @param amountDscToMint The amount of DSC to mint
      * @notice They must have more collateral value than the minimun threshold
      */
-
     function mintDsc(uint256 amountDscToMint) public moreThanZero(amountDscToMint) nonReentrant {
         s_DSCMinted[msg.sender] += amountDscToMint;
         _revertIfHealthFactorIsBroken(msg.sender);
@@ -148,7 +177,17 @@ contract DSCEngine is ReentrancyGuard {
         }
     }
 
-    function burnDsc() external {}
+    function burnDsc(uint256 amountDscToBurn) public {
+        s_DSCMinted[msg.sender] -= amountDscToBurn;
+        bool success = i_dsc.transferFrom(msg.sender, address(this), amountDscToBurn);
+        // this conditional his hypothetical
+        if (!success) {
+            revert DSCEngine__TransferFailed();
+        }
+        i_dsc.burn(amountDscToBurn);
+
+        _revertIfHealthFactorIsBroken(msg.sender); // I don't think this will ever hit
+    }
 
     function liquidate() external {}
 
