@@ -32,6 +32,7 @@ contract DSCEngine is ReentrancyGuard {
     error DSCEngine__TransferFailed();
     error DSCEngine__BreaksHealthFactor(uint256 healthFactorValue);
     error DSCEngine__MintFailed();
+    error DSCEngine__HealthFactorOk();
 
     ////////////////////////
     // State Variables    //
@@ -43,6 +44,7 @@ contract DSCEngine is ReentrancyGuard {
     uint256 private LIQUIDATION_THRESHOLD = 50; // 200% collateralization ratio
     uint256 private LIQUIDATION_PRECISION = 100; // 200% collateralization ratio
     uint256 private constant MIN_HEALTH_FACTOR = 1e18; // 1.0
+    uint256 private constant LIQUIDATION_BONUS = 10; // This means you get assets at a 10% discount when liquidating
 
     /// @dev Mapping of token address to price feed address
     mapping(address token => address priceFeed) private s_priceFeeds;
@@ -56,7 +58,7 @@ contract DSCEngine is ReentrancyGuard {
     // Events       //
     //////////////////
     event CollateralDeposited(address indexed user, address indexed token, uint256 amount);
-    event CollateralRedeemed(address indexed user, address indexed token, uint256 amount);
+    event CollateralRedeemed(address indexed redeemFrom, address indexed redeemTo, address token, uint256 amount); // if redeemFrom != redeemedTo, then it was liquidated
     //////////////////
     // Modifiers    //
     //////////////////
@@ -142,21 +144,16 @@ contract DSCEngine is ReentrancyGuard {
         external
     {
         burnDsc(amountDscToBurn);
-        redeemCollateral(tokenCollateralAddress, amountCollateral);
+        _redeemCollateral(tokenCollateralAddress, amountCollateral, msg.sender, msg.sender);
         // redeem collateral already checks for health factor
     }
 
     function redeemCollateral(address tokenCollateralAddress, uint256 amountCollateral)
-        public
+        external
         moreThanZero(amountCollateral)
         nonReentrant
     {
-        s_collateralDeposited[msg.sender][tokenCollateralAddress] -= amountCollateral;
-        emit CollateralRedeemed(msg.sender, tokenCollateralAddress, amountCollateral);
-        bool success = ERC20(tokenCollateralAddress).transfer(msg.sender, amountCollateral);
-        if (!success) {
-            revert DSCEngine__TransferFailed();
-        }
+        _redeemCollateral(tokenCollateralAddress, amountCollateral, msg.sender, msg.sender);
         _revertIfHealthFactorIsBroken(msg.sender);
     }
 
@@ -188,14 +185,54 @@ contract DSCEngine is ReentrancyGuard {
 
         _revertIfHealthFactorIsBroken(msg.sender); // I don't think this will ever hit
     }
+    /**
+     *
+     * @param collateral The erc20 collateral address to liquidate from the user
+     * @param user The user who ahs broken the health factor.  Their _healthFator should be below MIN_HEALTH_FACTOR
+     * @param debtToCover The aomunt of DSC to burn to improve the users health factor
+     * @notice A user can be partially liquidated, meaning they can have some of their DSC burned to improve their health factor
+     * @notice Users will get a liquidation bonus for liquidating other users
+     * @notice This function works assuming the protocol will be roughly 200% overcollateralized in order for this to work
+     * @notice A known bug would be if the protocol was only 100% collateralized, we wouldn't be able to liquidate anyone.
+     * For example, if the price of the collateral plummeted before anyone could be liquidated.
+     */
 
-    function liquidate() external {}
+    function liquidate(address collateral, address user, uint256 debtToCover)
+        external
+        moreThanZero(debtToCover)
+        nonReentrant
+    {
+        uint256 startingUserHealthFactor = _healthFactor(user);
+
+        if (startingUserHealthFactor >= MIN_HEALTH_FACTOR) {
+            revert DSCEngine__HealthFactorOk();
+        }
+        // If covering 100 DSC, we need to $100 of collateral
+        uint256 tokenAmountFromDebtCovered = getTokenAmountFromUsd(collateral, debtToCover);
+        // And give them a 10% bonus
+        // So we are giving the liquidator $110 of WETH for 100 DSC
+        // We should implement a feature to liquidate in the event the protocol is insolvent
+        // And sweep extra amounts into a treasury
+        uint256 bonusCollateral = (tokenAmountFromDebtCovered * LIQUIDATION_BONUS) / LIQUIDATION_PRECISION;
+        // Burn DSC equal to debtToCover
+    }
 
     function getHealthFactor() external {}
 
     /////////////////////////////////////////
     // Private & Internal View Functions   //
     /////////////////////////////////////////
+    function _redeemCollateral(address tokenCollateralAddress, uint256 amountCollateral, address from, address to)
+        private
+    {
+        s_collateralDeposited[from][tokenCollateralAddress] -= amountCollateral;
+        emit CollateralRedeemed(from, to, tokenCollateralAddress, amountCollateral);
+        bool success = ERC20(tokenCollateralAddress).transfer(to, amountCollateral);
+        if (!success) {
+            revert DSCEngine__TransferFailed();
+        }
+    }
+
     function _getAccountInformation(address user)
         private
         view
@@ -228,6 +265,15 @@ contract DSCEngine is ReentrancyGuard {
     ////////////////////////////////////////
     // Public & External View Functions   //
     ////////////////////////////////////////
+    function getTokenAmountFromUsd(address token, uint256 usdAmountInWei) public view returns (uint256) {
+        AggregatorV3Interface priceFeed = AggregatorV3Interface(s_priceFeeds[token]);
+        (, int256 price,,,) = priceFeed.latestRoundData();
+        // $100e18 USD Debt
+        // 1 ETH = 2000 USD
+        // The returned value from Chainlink will be 2000 * 1e8
+        // Most USD pairs have 8 decimals, so we will just pretend they all do
+        return ((usdAmountInWei * PRECISION) / (uint256(price) * ADDITIONAL_FEED_PRECISION));
+    }
 
     function getAccountCollateralValue(address user) public view returns (uint256 totalCollateralValueInUsd) {
         // 1- Loop through collateral deposited by the user and map it to the price to get the USD value
