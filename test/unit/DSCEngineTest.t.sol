@@ -7,6 +7,7 @@ import {DecentralizedStableCoin} from "src/DecentralizedStableCoin.sol";
 import {DeployDSC} from "script/DeployDSC.s.sol";
 import {HelperConfig} from "script/HelperConfig.s.sol";
 import {ERC20Mock} from "@openzeppelin/contracts/mocks/ERC20Mock.sol";
+import {MockFailedTransferFrom} from "../mocks/MockFailedTransferFrom.sol";
 
 contract DSCEngineTest is Test {
     //////////////////
@@ -98,6 +99,30 @@ contract DSCEngineTest is Test {
     // depositCollateral Tests  //
     //////////////////////////////
 
+    // this test needs it's own setup
+    function testRevertsIfTransferFromFails() public {
+        // Arrange - Setup
+        vm.prank(owner);
+        MockFailedTransferFrom mockDsc = new MockFailedTransferFrom();
+        tokenAddresses = [address(mockDsc)];
+        feedAddresses = [ethUsdPriceFeed];
+        vm.prank(owner);
+        DSCEngine mockDsce = new DSCEngine(
+            tokenAddresses,
+            feedAddresses,
+            address(mockDsc)
+        );
+        mockDsc.mint(user, amountCollateral);
+
+        // Arrange - User
+        vm.startPrank(user);
+        ERC20Mock(address(mockDsc)).approve(address(mockDsce), amountCollateral);
+        // Act / Assert
+        vm.expectRevert(DSCEngine.DSCEngine__TransferFailed.selector);
+        mockDsce.depositCollateral(address(mockDsc), amountCollateral);
+        vm.stopPrank();
+    }
+
     function testRevertsdepositCollateralIfCollateralZero() public {
         vm.startPrank(user);
         ERC20Mock(weth).approve(address(dsce), amountCollateral);
@@ -115,18 +140,17 @@ contract DSCEngineTest is Test {
         vm.stopPrank();
     }
 
-    function testRevertDepositCollateralTransferFailEmits() public {
-        uint256 amount = 1e18;
-        vm.expectRevert("ERC20: insufficient allowance");
-        dsce.depositCollateral(weth, amount);
-    }
-
     modifier depositedCollateral() {
         vm.startPrank(user);
         wethToken.approve(address(dsce), amountCollateral);
         dsce.depositCollateral(weth, amountCollateral);
         vm.stopPrank();
         _;
+    }
+
+    function testCanDepositCollateralWithoutMinting() public depositedCollateral {
+        uint256 userBalance = dsc.balanceOf(user);
+        assertEq(userBalance, 0);
     }
 
     function testCanDepositedCollateralAndGetAccountInfo() public depositedCollateral {
