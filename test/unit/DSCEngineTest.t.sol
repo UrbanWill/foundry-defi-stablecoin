@@ -107,26 +107,33 @@ contract DSCEngineTest is Test {
         vm.stopPrank();
     }
 
+    function testRevertsWithUnapprovedCollateral() public {
+        ERC20Mock randToken = new ERC20Mock("RAN", "RAN", user, 100e18);
+        vm.startPrank(user);
+        vm.expectRevert(abi.encodeWithSelector(DSCEngine.DSCEngine__TokenNotAllowed.selector, address(randToken)));
+        dsce.depositCollateral(address(randToken), amountCollateral);
+        vm.stopPrank();
+    }
+
     function testRevertDepositCollateralTransferFailEmits() public {
         uint256 amount = 1e18;
         vm.expectRevert("ERC20: insufficient allowance");
         dsce.depositCollateral(weth, amount);
     }
 
-    function testDepositCollateralUpdatesStorage() public {
-        // Arrange
+    modifier depositedCollateral() {
         vm.startPrank(user);
         wethToken.approve(address(dsce), amountCollateral);
-
-        // Act
         dsce.depositCollateral(weth, amountCollateral);
         vm.stopPrank();
+        _;
+    }
 
-        // Assert
-        uint256 expected = dsce.getUsdValue(weth, amountCollateral);
-        uint256 actualCollateral = dsce.getAccountCollateralValue(user);
-
-        assertEq(actualCollateral, expected);
+    function testCanDepositedCollateralAndGetAccountInfo() public depositedCollateral {
+        (uint256 totalDscMinted, uint256 collateralValueInUsd) = dsce.getAccountInformation(user);
+        uint256 expectedDepositedAmount = dsce.getTokenAmountFromUsd(weth, collateralValueInUsd);
+        assertEq(totalDscMinted, 0);
+        assertEq(expectedDepositedAmount, amountCollateral);
     }
 
     function testDepositCollateralUpdatesEmits() public {
