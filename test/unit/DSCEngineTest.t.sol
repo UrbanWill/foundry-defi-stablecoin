@@ -18,6 +18,8 @@ contract DSCEngineTest is Test {
     DecentralizedStableCoin public dsc;
     HelperConfig public config;
 
+    address public ethUsdPriceFeed;
+    address public btcUsdPriceFeed;
     address public weth;
     address public wbtc;
 
@@ -32,15 +34,38 @@ contract DSCEngineTest is Test {
         DeployDSC deployer = new DeployDSC();
         (dsc, dsce, config) = deployer.run();
         config = config;
-        (,, address wethAddr, address wbtcAddr, uint256 deployerKey) = config.activeNetworkConfig();
+        (
+            address ethUsdPriceFeedAddr,
+            address btcUsdPriceFeedAddr,
+            address wethAddr,
+            address wbtcAddr,
+            uint256 deployerKey
+        ) = config.activeNetworkConfig();
         weth = wethAddr;
         wbtc = wbtcAddr;
+        ethUsdPriceFeed = ethUsdPriceFeedAddr;
+        btcUsdPriceFeed = btcUsdPriceFeedAddr;
         owner = vm.addr(deployerKey);
 
         wethToken = ERC20Mock(weth);
 
         ERC20Mock(weth).mint(user, STARTING_USER_BALANCE);
         ERC20Mock(wbtc).mint(user, STARTING_USER_BALANCE);
+    }
+
+    ///////////////////////
+    // Constructor Tests //
+    ///////////////////////
+    address[] public tokenAddresses;
+    address[] public feedAddresses;
+
+    function testRevertsIfTokenLengthDoesntMatchPriceFeeds() public {
+        tokenAddresses.push(weth);
+        feedAddresses.push(ethUsdPriceFeed);
+        feedAddresses.push(btcUsdPriceFeed);
+
+        vm.expectRevert(DSCEngine.DSCEngine__TokenAddressesAndPriceFeedAddressesAmountsDontMatch.selector);
+        new DSCEngine(tokenAddresses, feedAddresses, address(dsc));
     }
 
     //////////////////
