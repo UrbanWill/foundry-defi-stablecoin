@@ -333,6 +333,10 @@ contract DSCEngine is ReentrancyGuard {
         }
     }
 
+    function getCollateralBalanceOfUser(address user, address token) external view returns (uint256) {
+        return s_collateralDeposited[user][token];
+    }
+
     /**
      * @param token token address
      * @param amount in WEI
