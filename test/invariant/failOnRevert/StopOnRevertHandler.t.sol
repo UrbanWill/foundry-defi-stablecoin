@@ -19,6 +19,8 @@ contract StopOnRevertHandler is Test {
     ERC20Mock public weth;
     ERC20Mock public wbtc;
 
+    uint96 public constant MAX_DEPOSIT_SIZE = type(uint96).max;
+
     constructor(DSCEngine _dscEngine, DecentralizedStableCoin _dsc) {
         dscEngine = _dscEngine;
         dsc = _dsc;
@@ -29,5 +31,29 @@ contract StopOnRevertHandler is Test {
 
         ethUsdPriceFeed = MockV3Aggregator(dscEngine.getCollateralTokenPriceFeed(address(weth)));
         btcUsdPriceFeed = MockV3Aggregator(dscEngine.getCollateralTokenPriceFeed(address(wbtc)));
+    }
+    ///////////////
+    // DSCEngine //
+    ///////////////
+
+    function mintAndDepositCollateral(uint256 collateralSeed, uint256 amountCollateral) public {
+        // must be more than 0
+        amountCollateral = bound(amountCollateral, 1, MAX_DEPOSIT_SIZE);
+        ERC20Mock collateral = _getCollateralFromSeed(collateralSeed);
+
+        vm.startPrank(msg.sender);
+        collateral.mint(msg.sender, amountCollateral);
+        collateral.approve(address(dscEngine), amountCollateral);
+        dscEngine.depositCollateral(address(collateral), amountCollateral);
+        vm.stopPrank();
+    }
+
+    /// Helper Functions
+    function _getCollateralFromSeed(uint256 collateralSeed) private view returns (ERC20Mock) {
+        if (collateralSeed % 2 == 0) {
+            return weth;
+        } else {
+            return wbtc;
+        }
     }
 }
