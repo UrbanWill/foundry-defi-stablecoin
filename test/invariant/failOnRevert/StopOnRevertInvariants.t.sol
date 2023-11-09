@@ -41,8 +41,19 @@ contract StopOnRevertInvariants is StdInvariant, Test {
 
         console.log("wethValue: %s", wethValue);
         console.log("wbtcValue: %s", wbtcValue);
-        console.log("totalSupply", totalSupply);
+        console.log("totalSupply: %s", totalSupply);
 
         assert(wethValue + wbtcValue >= totalSupply);
+    }
+
+    function invariant_gettersCantRevert() public view {
+        dsce.getAdditionalFeedPrecision();
+        dsce.getCollateralTokens();
+        dsce.getLiquidationBonus();
+        dsce.getLiquidationBonus();
+        dsce.getLiquidationThreshold();
+        dsce.getMinHealthFactor();
+        dsce.getPrecision();
+        dsce.getDsc();
     }
 }
