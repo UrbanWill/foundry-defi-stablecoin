@@ -59,9 +59,19 @@ contract StopOnRevertHandler is Test {
         dscEngine.redeemCollateral(address(collateral), amountCollateral);
     }
 
+    function burnDsc(uint256 amountDsc) public {
+        // Must burn more than 0
+        amountDsc = bound(amountDsc, 0, dsc.balanceOf(msg.sender));
+        if (amountDsc == 0) {
+            return;
+        }
+        dscEngine.burnDsc(amountDsc);
+    }
+
     /////////////////
     // Aggregator //
     ////////////////
+
     function updateCollateralPrice(uint96 newPrice, uint256 collateralSeed) public {
         int256 intNewPrice = int256(uint256(newPrice));
         ERC20Mock collateral = _getCollateralFromSeed(collateralSeed);
