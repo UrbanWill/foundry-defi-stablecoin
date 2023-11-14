@@ -68,6 +68,8 @@ forge test
 
 ### Test Coverage
 
+![Screenshot 2023-11-14 at 18 15 36](https://github.com/UrbanWill/foundry-defi-stablecoin/assets/47801291/b7073a0f-d774-407f-8bbb-40d2f2e06e8e)
+
 ```
 forge coverage
 ```
